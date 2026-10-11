@@ -178,6 +178,8 @@ export function usePrependPill({
   }
 
   return {
+    /** Whether it's up, shown or not, as it only shows while active. */
+    isUp: enabled && offer !== undefined && live.count > 0,
     visible: enabled && isActive && offer !== undefined && live.count > 0,
     count: live.count,
     authors:
