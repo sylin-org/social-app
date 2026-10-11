@@ -79,6 +79,7 @@ import * as bsky from '#/types/bsky'
 import {GapRow} from './GapRow'
 import {isStagedFull, useFollowingV2Metrics} from './metrics'
 import {mixSamples} from './mixSamples'
+import {usePrependPillMetrics} from './pillMetrics'
 import {PrependPill} from './PrependPill'
 import {
   type AuthorFilter,
@@ -975,7 +976,7 @@ let PostFeed = ({
     trendingIndices,
   ])
 
-  const pill = usePrependPill({
+  const prependPill = usePrependPill({
     enabled: isAnchored,
     isActive,
     staged: prepend.staged,
@@ -990,6 +991,13 @@ let PostFeed = ({
       })
     },
     onRead: prepend.markRead,
+  })
+  const pill = usePrependPillMetrics({
+    enabled: isAnchored,
+    metric: ax.metric,
+    isActive,
+    top: feedData?.pages[0],
+    pill: prependPill,
   })
   /** Tells the prepend the reader saw a row, if it's from the top page. */
   const onTopRowSeen = useNonReactiveCallback((row: FeedRow) => {

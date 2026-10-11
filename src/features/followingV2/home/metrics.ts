@@ -27,8 +27,8 @@ import {type NewPostsCheckTrigger} from './useNewPostsCheck'
  */
 
 /**
- * Where a check happens. Only Home's Following feed checks this way so far;
- * other surfaces join as they gain checks.
+ * Where a check, or a new posts pill, happens. Only Home's Following feed has
+ * them so far; other surfaces join as they gain them.
  */
 export type FollowingV2Surface = 'homeFollowing'
 

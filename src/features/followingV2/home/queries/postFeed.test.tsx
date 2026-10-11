@@ -30,6 +30,7 @@ import {
   RECURRING_SAMPLE_RATE,
   useFollowingV2Metrics,
 } from '#/features/followingV2/home/metrics'
+import {usePrependPillMetrics} from '#/features/followingV2/home/pillMetrics'
 import {
   LIST_REST_QUIET_MS,
   useListRest,
@@ -1926,15 +1927,21 @@ describe('staging new posts on Home Following', () => {
       })
       const offsetY = useSharedValue(400)
       const rows = rowsOf(pages)
-      const pill = usePrependPill({
+      const pill = usePrependPillMetrics({
         enabled: true,
+        metric,
         isActive,
-        staged: prepend.staged,
-        rows,
-        pages,
-        offsetY,
-        scrollToTop,
-        onRead: prepend.markRead,
+        top: pages?.[0],
+        pill: usePrependPill({
+          enabled: true,
+          isActive,
+          staged: prepend.staged,
+          rows,
+          pages,
+          offsetY,
+          scrollToTop,
+          onRead: prepend.markRead,
+        }),
       })
       const settleAtTop = useSettleAtTop('following', undefined, {
         enabled: true,
@@ -2016,7 +2023,12 @@ describe('staging new posts on Home Following', () => {
       metric.mock.calls
         .filter(([event]) => event === name)
         .map(([, payload]) => payload as Record<string, unknown>)
-    return {latest, cached, list, onHasNew, setActive, reported}
+    /** The pill's metrics reported so far, in order. */
+    const pillEvents = () =>
+      metric.mock.calls.filter(([event]) =>
+        (event as string).startsWith('followingV2:pill:'),
+      ) as [string, Record<string, unknown>][]
+    return {latest, cached, list, onHasNew, setActive, reported, pillEvents}
   }
 
   /** Advances fake time by `ms`, letting what that sets off run. */
@@ -2497,6 +2509,122 @@ describe('staging new posts on Home Following', () => {
 
       expect(postsOf(cached())).toEqual([['p14', 'p13']])
       expect(latest.pill.visible).toBe(false)
+    })
+  })
+
+  describe("reports the pill's", () => {
+    it('impression on a warm open, and coming down as the reader reaches the top', async () => {
+      const {list, pillEvents} = renderHome()
+      newest = 14
+      await warmOpen()
+      await wait(SECOND)
+      list.scroll(400)
+      list.scroll(0)
+
+      expect(pillEvents()).toEqual([
+        [
+          'followingV2:pill:impression',
+          {
+            surface: 'homeFollowing',
+            source: 'return',
+            count: 2,
+            presentation: 'generic',
+          },
+        ],
+        [
+          'followingV2:pill:hide',
+          {
+            surface: 'homeFollowing',
+            source: 'return',
+            reason: 'reachedTop',
+            count: 2,
+            shownMs: expect.any(Number),
+          },
+        ],
+      ])
+      expect(pillEvents()[1][1].shownMs as number).toBeGreaterThanOrEqual(
+        SECOND,
+      )
+    })
+
+    it('impression once, as later checks add to it, with the count it last showed', async () => {
+      const {list, pillEvents} = renderHome()
+      newest = 14
+      await warmOpen()
+      newest = 15
+      await anInterval()
+      list.beginDrag(0)
+      list.endDrag(0)
+      await wait(SETTLE_QUIET_MS)
+
+      expect(pillEvents()).toMatchObject([
+        ['followingV2:pill:impression', {count: 2}],
+        ['followingV2:pill:hide', {reason: 'reachedTop', count: 3}],
+      ])
+    })
+
+    it('press, and coming down for it', async () => {
+      const {latest, pillEvents} = renderHome()
+      newest = 14
+      await warmOpen()
+      await wait(SECOND)
+
+      act(() => latest.pill.onPress())
+
+      expect(pillEvents().slice(1)).toMatchObject([
+        ['followingV2:pill:press', {source: 'return', count: 2}],
+        ['followingV2:pill:hide', {reason: 'pressed'}],
+      ])
+      expect(pillEvents()[1][1].shownMs as number).toBeGreaterThanOrEqual(
+        SECOND,
+      )
+    })
+
+    it('coming down as a refresh replaces the feed', async () => {
+      const {latest, pillEvents} = renderHome()
+      newest = 14
+      await warmOpen()
+
+      const top = holdNextRequest()
+      let refreshing!: Promise<unknown>
+      act(() => {
+        refreshing = latest.refresh()
+      })
+      await act(async () => {
+        top.respondWith({
+          cursor: 't:12',
+          startCursor: 't:14',
+          feed: [post(14), post(13)],
+        })
+        await refreshing
+      })
+
+      expect(pillEvents()[1]).toMatchObject([
+        'followingV2:pill:hide',
+        {reason: 'replaced'},
+      ])
+    })
+
+    it('nothing for what a quick hop or an interval stages', async () => {
+      const {pillEvents} = renderHome()
+      newest = 14
+      await quickHop()
+      newest = 15
+      await anInterval()
+
+      expect(pillEvents()).toEqual([])
+    })
+
+    it('nothing from a view that is not on screen, until it is', async () => {
+      const {setActive, pillEvents} = renderHome()
+      newest = 14
+      await warmOpen()
+      setActive(false)
+      setActive(true)
+
+      expect(pillEvents()).toMatchObject([
+        ['followingV2:pill:impression', {count: 2}],
+      ])
     })
   })
 
