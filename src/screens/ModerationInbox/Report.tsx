@@ -1,7 +1,9 @@
+import {useCallback} from 'react'
 import {View} from 'react-native'
 import {isValidDid} from '@atproto/syntax'
 import {moderateProfile} from '@bsky/sdk/moderation'
 import {Trans, useLingui} from '@lingui/react/macro'
+import {useFocusEffect} from '@react-navigation/native'
 
 import {isAppLabeler} from '#/lib/moderation'
 import {createSanitizedDisplayName} from '#/lib/moderation/create-sanitized-display-name'
@@ -63,6 +65,14 @@ export function ModerationInboxReportDetailsScreen({
         ? l`Bluesky Moderation Service`
         : moderationService
   const isLoading = !reportQuery.isError && !reportQuery.data
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isEnabled && moderationService && id !== undefined) {
+        ax.metric('moderation:inbox:viewReport', {})
+      }
+    }, [ax, isEnabled, moderationService, id]),
+  )
 
   if (!isEnabled || !moderationService || id === undefined) {
     return <NotFoundScreen />
